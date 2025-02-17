@@ -71,6 +71,7 @@
         }
 
         function updateChart() {
+            const currentDate = new Date();
             const selectedRegion = document.getElementById('regionSelect').value;
             const recordType = document.getElementById('recordType').value;
             
@@ -100,10 +101,16 @@
                     const maxData = regionData.filter(d => d.type === 'MAX');
                     datasets.push({
                         label: `${region} Max`,
-                        data: maxData.map(d => ({
+                        data: [...maxData.map(d => ({
                             x: new Date(d.INTERVAL_DATETIME),
                             y: d.OPERATIONAL_DEMAND
-                        })),
+                        })), {
+                            x: currentDate,
+                            y: minData[minData.length - 1]?.OPERATIONAL_DEMAND
+                        }], {
+                            x: currentDate,
+                            y: maxData[maxData.length - 1]?.OPERATIONAL_DEMAND
+                        }],
                         borderColor: getRegionColor(region),
                         backgroundColor: getRegionColor(region),
                         pointRadius: 4
@@ -114,7 +121,7 @@
                     const minData = regionData.filter(d => d.type === 'MIN');
                     datasets.push({
                         label: `${region} Min`,
-                        data: minData.map(d => ({
+                        data: [...minData.map(d => ({
                             x: new Date(d.INTERVAL_DATETIME),
                             y: d.OPERATIONAL_DEMAND
                         })),
@@ -130,6 +137,7 @@
 
             chart = new Chart('chart', {
                 type: 'line',
+                stepped: true,
                 data: {
                     datasets: datasets
                 },
