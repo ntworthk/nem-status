@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEM Demand Analysis</title>
+    <title>NEM Demand Records</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
@@ -14,6 +14,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+            height: 600px;
         }
         .controls {
             margin-bottom: 20px;
@@ -31,9 +32,10 @@
             <select id="regionSelect">
                 <option value="all">All Regions</option>
             </select>
-            <select id="vizType">
-                <option value="seasonal">Seasonal Pattern</option>
-                <option value="minmax">Min/Max Range</option>
+            <select id="recordType">
+                <option value="both">Both Max & Min</option>
+                <option value="max">Maximum Only</option>
+                <option value="min">Minimum Only</option>
             </select>
         </div>
         <div class="chart-container">
@@ -45,7 +47,7 @@
         let data;
         let chart;
 
-        fetch('https://cardioid.co.nz/api/nem')
+        fetch('https://cardioid.co.nz/api/nem?over_time=TRUE')
             .then(response => response.json())
             .then(jsonData => {
                 data = jsonData;
@@ -64,132 +66,107 @@
             });
 
             regionSelect.addEventListener('change', updateChart);
-            document.getElementById('vizType').addEventListener('change', updateChart);
+            document.getElementById('recordType').addEventListener('change', updateChart);
         }
 
         function updateChart() {
             const selectedRegion = document.getElementById('regionSelect').value;
-            const vizType = document.getElementById('vizType').value;
+            const recordType = document.getElementById('recordType').value;
             
             if (chart) {
                 chart.destroy();
             }
 
-            if (vizType === 'seasonal') {
-                createSeasonalChart(selectedRegion);
-            } else {
-                createMinMaxChart(selectedRegion);
-            }
-        }
-
-        function createSeasonalChart(selectedRegion) {
             let filteredData = data;
             if (selectedRegion !== 'all') {
                 filteredData = data.filter(d => d.REGIONID === selectedRegion);
             }
+            if (recordType !== 'both') {
+                filteredData = filteredData.filter(d => 
+                    recordType === 'max' ? d.type === 'MAX' : d.type === 'MIN'
+                );
+            }
 
-            const datasets = [];
             const regions = selectedRegion === 'all' 
                 ? [...new Set(data.map(d => d.REGIONID))]
                 : [selectedRegion];
 
-            regions.forEach(region => {
-                const regionData = data.filter(d => d.REGIONID === region);
-                datasets.push({
-                    label: `${region} Max`,
-                    data: regionData.map(d => d.TOT_MAX),
-                    borderColor: getRegionColor(region),
-                    fill: false
-                });
-                datasets.push({
-                    label: `${region} Min`,
-                    data: regionData.map(d => d.TOT_MIN),
-                    borderColor: getRegionColor(region, true),
-                    fill: false,
-                    borderDash: [5, 5]
-                });
+            const datasets = regions.flatMap(region => {
+                const regionData = filteredData.filter(d => d.REGIONID === region);
+                const datasets = [];
+                
+                if (recordType !== 'min') {
+                    const maxData = regionData.filter(d => d.type === 'MAX');
+                    datasets.push({
+                        label: `${region} Max`,
+                        data: maxData.map(d => ({
+                            x: new Date(d.INTERVAL_DATETIME),
+                            y: d.OPERATIONAL_DEMAND
+                        })),
+                        borderColor: getRegionColor(region),
+                        backgroundColor: getRegionColor(region),
+                        pointRadius: 4
+                    });
+                }
+                
+                if (recordType !== 'max') {
+                    const minData = regionData.filter(d => d.type === 'MIN');
+                    datasets.push({
+                        label: `${region} Min`,
+                        data: minData.map(d => ({
+                            x: new Date(d.INTERVAL_DATETIME),
+                            y: d.OPERATIONAL_DEMAND
+                        })),
+                        borderColor: getRegionColor(region, true),
+                        backgroundColor: getRegionColor(region, true),
+                        pointRadius: 4,
+                        borderDash: [5, 5]
+                    });
+                }
+                
+                return datasets;
             });
 
             chart = new Chart('chart', {
                 type: 'line',
                 data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
                     datasets: datasets
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'nearest',
+                        intersect: false
+                    },
                     plugins: {
                         title: {
                             display: true,
-                            text: 'Seasonal Demand Patterns by Region'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Demand (MW)'
+                            text: 'NEM Demand Records Over Time'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()} MW`;
+                                }
                             }
                         }
-                    }
-                }
-            });
-        }
-
-        function createMinMaxChart(selectedRegion) {
-            let filteredData = data;
-            if (selectedRegion !== 'all') {
-                filteredData = data.filter(d => d.REGIONID === selectedRegion);
-            }
-
-            const regions = selectedRegion === 'all' 
-                ? [...new Set(data.map(d => d.REGIONID))]
-                : [selectedRegion];
-
-            const datasets = regions.map(region => {
-                const regionData = data.filter(d => d.REGIONID === region);
-                return {
-                    label: region,
-                    data: regionData.map(d => ({
-                        y: [d.TOT_MIN, d.TOT_MAX],
-                        x: d.MONTH
-                    })),
-                    backgroundColor: getRegionColor(region)
-                };
-            });
-
-            chart = new Chart('chart', {
-                type: 'bar',
-                data: {
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Demand Range by Region and Month'
-                        }
                     },
                     scales: {
-                        y: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month'
+                            },
                             title: {
                                 display: true,
-                                text: 'Demand (MW)'
+                                text: 'Date'
                             }
                         },
-                        x: {
-                            type: 'linear',
-                            offset: true,
-                            grid: {
-                                offset: true
-                            },
-                            ticks: {
-                                stepSize: 1
-                            },
+                        y: {
                             title: {
                                 display: true,
-                                text: 'Month'
+                                text: 'Demand (MW)'
                             }
                         }
                     }
