@@ -48,7 +48,7 @@
         let data;
         let chart;
 
-        fetch('https://cardioid.co.nz/api/nem?over_time=TRUE')
+        fetch('https://cardioid.co.nz/api/nem?over_time=true')
             .then(response => response.json())
             .then(jsonData => {
                 data = jsonData;
@@ -99,37 +99,49 @@
                 
                 if (recordType !== 'min') {
                     const maxData = regionData.filter(d => d.type === 'MAX');
-                    datasets.push({
-                        label: `${region} Max`,
-                        data: [...maxData.map(d => ({
-                            x: new Date(d.INTERVAL_DATETIME),
-                            y: d.OPERATIONAL_DEMAND
-                        })), {
-                            x: currentDate,
-                            y: minData[minData.length - 1]?.OPERATIONAL_DEMAND
-                        }], {
-                            x: currentDate,
-                            y: maxData[maxData.length - 1]?.OPERATIONAL_DEMAND
-                        }],
-                        borderColor: getRegionColor(region),
-                        backgroundColor: getRegionColor(region),
-                        pointRadius: 4
-                    });
+                    if (maxData.length > 0) {
+                        datasets.push({
+                            label: `${region} Max`,
+                            data: [
+                                ...maxData.map(d => ({
+                                    x: new Date(d.INTERVAL_DATETIME),
+                                    y: d.OPERATIONAL_DEMAND
+                                })),
+                                {
+                                    x: currentDate,
+                                    y: maxData[maxData.length - 1].OPERATIONAL_DEMAND
+                                }
+                            ],
+                            borderColor: getRegionColor(region),
+                            backgroundColor: getRegionColor(region),
+                            pointRadius: 4,
+                            stepped: true
+                        });
+                    }
                 }
                 
                 if (recordType !== 'max') {
                     const minData = regionData.filter(d => d.type === 'MIN');
-                    datasets.push({
-                        label: `${region} Min`,
-                        data: [...minData.map(d => ({
-                            x: new Date(d.INTERVAL_DATETIME),
-                            y: d.OPERATIONAL_DEMAND
-                        })),
-                        borderColor: getRegionColor(region, true),
-                        backgroundColor: getRegionColor(region, true),
-                        pointRadius: 4,
-                        borderDash: [5, 5]
-                    });
+                    if (minData.length > 0) {
+                        datasets.push({
+                            label: `${region} Min`,
+                            data: [
+                                ...minData.map(d => ({
+                                    x: new Date(d.INTERVAL_DATETIME),
+                                    y: d.OPERATIONAL_DEMAND
+                                })),
+                                {
+                                    x: currentDate,
+                                    y: minData[minData.length - 1].OPERATIONAL_DEMAND
+                                }
+                            ],
+                            borderColor: getRegionColor(region, true),
+                            backgroundColor: getRegionColor(region, true),
+                            pointRadius: 4,
+                            borderDash: [5, 5],
+                            stepped: true
+                        });
+                    }
                 }
                 
                 return datasets;
@@ -137,7 +149,6 @@
 
             chart = new Chart('chart', {
                 type: 'line',
-                stepped: true,
                 data: {
                     datasets: datasets
                 },
