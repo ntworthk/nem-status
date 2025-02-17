@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEM Data Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        .number { text-align: right; }
+    </style>
+</head>
+<body>
+    <div id="table-container">Loading...</div>
+
+    <script>
+        fetch('https://cardioid.co.nz/api/nem')
+            .then(response => response.json())
+            .then(data => displayData(data))
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('table-container').innerHTML = 'Error loading data';
+            });
+
+        function displayData(data) {
+            if (!data?.length) return;
+
+            const headers = Object.keys(data[0]);
+            const tableHTML = `
+                <table>
+                    <thead>
+                        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(row => `
+                            <tr>${headers.map(h => `
+                                <td class="${typeof row[h] === 'number' ? 'number' : ''}">${row[h] ?? ''}</td>
+                            `).join('')}</tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.getElementById('table-container').innerHTML = tableHTML;
+        }
+    </script>
+</body>
+</html>
