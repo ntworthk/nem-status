@@ -3,46 +3,217 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEM Data Viewer</title>
+    <title>NEM Demand Analysis</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f4f4f4; }
-        .number { text-align: right; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .chart-container { 
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        select { padding: 8px; margin-right: 10px; }
     </style>
 </head>
 <body>
-    <div id="table-container">Loading...</div>
+    <div class="container">
+        <div class="controls">
+            <select id="regionSelect">
+                <option value="all">All Regions</option>
+            </select>
+            <select id="vizType">
+                <option value="seasonal">Seasonal Pattern</option>
+                <option value="minmax">Min/Max Range</option>
+            </select>
+        </div>
+        <div class="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
 
     <script>
+        let data;
+        let chart;
+
         fetch('https://cardioid.co.nz/api/nem')
             .then(response => response.json())
-            .then(data => displayData(data))
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('table-container').innerHTML = 'Error loading data';
+            .then(jsonData => {
+                data = jsonData;
+                setupControls();
+                updateChart();
             });
 
-        function displayData(data) {
-            if (!data?.length) return;
+        function setupControls() {
+            const regions = [...new Set(data.map(d => d.REGIONID))];
+            const regionSelect = document.getElementById('regionSelect');
+            regions.forEach(region => {
+                const option = document.createElement('option');
+                option.value = region;
+                option.textContent = region;
+                regionSelect.appendChild(option);
+            });
 
-            const headers = Object.keys(data[0]);
-            const tableHTML = `
-                <table>
-                    <thead>
-                        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
-                    </thead>
-                    <tbody>
-                        ${data.map(row => `
-                            <tr>${headers.map(h => `
-                                <td class="${typeof row[h] === 'number' ? 'number' : ''}">${row[h] ?? ''}</td>
-                            `).join('')}</tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-            document.getElementById('table-container').innerHTML = tableHTML;
+            regionSelect.addEventListener('change', updateChart);
+            document.getElementById('vizType').addEventListener('change', updateChart);
+        }
+
+        function updateChart() {
+            const selectedRegion = document.getElementById('regionSelect').value;
+            const vizType = document.getElementById('vizType').value;
+            
+            if (chart) {
+                chart.destroy();
+            }
+
+            if (vizType === 'seasonal') {
+                createSeasonalChart(selectedRegion);
+            } else {
+                createMinMaxChart(selectedRegion);
+            }
+        }
+
+        function createSeasonalChart(selectedRegion) {
+            let filteredData = data;
+            if (selectedRegion !== 'all') {
+                filteredData = data.filter(d => d.REGIONID === selectedRegion);
+            }
+
+            const datasets = [];
+            const regions = selectedRegion === 'all' 
+                ? [...new Set(data.map(d => d.REGIONID))]
+                : [selectedRegion];
+
+            regions.forEach(region => {
+                const regionData = data.filter(d => d.REGIONID === region);
+                datasets.push({
+                    label: `${region} Max`,
+                    data: regionData.map(d => d.TOT_MAX),
+                    borderColor: getRegionColor(region),
+                    fill: false
+                });
+                datasets.push({
+                    label: `${region} Min`,
+                    data: regionData.map(d => d.TOT_MIN),
+                    borderColor: getRegionColor(region, true),
+                    fill: false,
+                    borderDash: [5, 5]
+                });
+            });
+
+            chart = new Chart('chart', {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Seasonal Demand Patterns by Region'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Demand (MW)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createMinMaxChart(selectedRegion) {
+            let filteredData = data;
+            if (selectedRegion !== 'all') {
+                filteredData = data.filter(d => d.REGIONID === selectedRegion);
+            }
+
+            const regions = selectedRegion === 'all' 
+                ? [...new Set(data.map(d => d.REGIONID))]
+                : [selectedRegion];
+
+            const datasets = regions.map(region => {
+                const regionData = data.filter(d => d.REGIONID === region);
+                return {
+                    label: region,
+                    data: regionData.map(d => ({
+                        y: [d.TOT_MIN, d.TOT_MAX],
+                        x: d.MONTH
+                    })),
+                    backgroundColor: getRegionColor(region)
+                };
+            });
+
+            chart = new Chart('chart', {
+                type: 'bar',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Demand Range by Region and Month'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Demand (MW)'
+                            }
+                        },
+                        x: {
+                            type: 'linear',
+                            offset: true,
+                            grid: {
+                                offset: true
+                            },
+                            ticks: {
+                                stepSize: 1
+                            },
+                            title: {
+                                display: true,
+                                text: 'Month'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function getRegionColor(region, isMin = false) {
+            const colors = {
+                'AUS1': '#000000',
+                'NSW1': '#1f77b4',
+                'QLD1': '#ff7f0e',
+                'SA1': '#2ca02c',
+                'TAS1': '#d62728',
+                'VIC1': '#9467bd'
+            };
+            return isMin ? adjustColor(colors[region], 0.5) : colors[region];
+        }
+
+        function adjustColor(hex, opacity) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${opacity})`;
         }
     </script>
 </body>
